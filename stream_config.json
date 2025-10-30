@@ -1,0 +1,16 @@
+{
+  "use_object_detection": true,
+  "bitrate": 2048,
+  "speed_preset": "ultrafast",
+  "target_duration": 3,
+  "max_files": 15,
+  "segment_location": "./hls/segment_%05d.ts",
+  "playlist_location": "./hls/test.m3u8",
+  "playlist_root": "http://localhost:8554/hls/",
+  "frame_width": 480,
+  "frame_height": 360,
+  "model_path": "yolov5n.pt",							
+  "frames_interval": 15,
+  "detection_conf": 0.65,
+  "obj_detection_interval": 16
+}

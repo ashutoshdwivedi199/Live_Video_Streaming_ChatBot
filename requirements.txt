@@ -1,0 +1,25 @@
+# Core Python packages for video streaming and object detection
+opencv-python
+numpy
+scipy
+ultralytics
+flask
+
+# ------------------------------------------------------------
+# External dependencies (must be installed separately)
+# ------------------------------------------------------------
+
+# GStreamer (required for HLS streaming)
+# 	Download and install from: https://gstreamer.freedesktop.org/download/
+#	Ensure 'gst-launch-1.0' is available in your system PATH
+
+# HLS.js (used in frontend HTML for video playback)
+# 	Included via CDN in your HTML: <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+# 	No need to install locally
+
+# ------------------------------------------------------------
+# Optional: For Windows webcam support in GStreamer
+# ------------------------------------------------------------
+
+# If using 'ksvideosrc' on Windows, ensure GStreamer is installed with DirectShow plugins
+# For Linux, use 'v4l2src'; for macOS, use 'avfvideosrc'
