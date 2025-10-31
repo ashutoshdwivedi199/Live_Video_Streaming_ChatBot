@@ -3,7 +3,7 @@ import threading
 import stream_controller
 
 app = Flask(__name__, static_folder='hls')
-
+chat_log = []  # Global or session-based
 @app.route("/hls/<path:filename>")
 def hls_files(filename):
     return send_from_directory("hls", filename, mimetype="application/vnd.apple.mpegurl" if filename.endswith(".m3u8") else None)
@@ -25,11 +25,14 @@ def get_bot_response(user_input):
 
 @app.route("/", methods=["GET", "POST"])
 def chatbot():
+    global chat_log
     response = ""
     if request.method == "POST":
         user_input = request.form["user_input"]
+        chat_log.append({"role": "user", "message": user_input})
         response = get_bot_response(user_input)
-    return render_template("index.html", response=response)
-
+        chat_log.append({"role": "bot", "message": response})
+    return render_template("index.html", response=response, chat_log=chat_log)
+    
 if __name__ == "__main__":
     app.run(debug=True)

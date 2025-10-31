@@ -1,111 +1,172 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Video Streaming Chatbot</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f7f9fc;
-            margin: 40px;
-        }
-        h2 {
-            color: #333;
-        }
-        .instructions {
-            background-color: #e0ecff;
-            border-left: 5px solid #007BFF;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        .instructions ul {
-            margin: 0;
-            padding-left: 20px;
-        }
-        form {
-            margin-bottom: 20px;
-        }
-        input[type="text"] {
-            padding: 8px;
-            width: 300px;
-            font-size: 16px;
-        }
-        input[type="submit"] {
-            padding: 8px 16px;
-            font-size: 16px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        input[type="submit"]:hover {
-            background-color: #0056b3;
-        }
-        .response {
-            font-size: 1.1em;
-            color: #007BFF;
-            margin-top: 20px;
-        }
-        .video-container {
-            margin-top: 30px;
-        }
-        button.refresh-btn {
-            margin-top: 10px;
-            padding: 6px 12px;
-            font-size: 14px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button.refresh-btn:hover {
-            background-color: #218838;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Video Streaming Chatbot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      margin: 0;
+      padding: 40px;
+    }
+
+    h2 {
+      color: #333;
+    }
+
+    .main-layout {
+      display: flex;
+      flex-direction: row;
+      gap: 40px;
+    }
+
+    .left-panel {
+      flex: 2;
+    }
+
+    .chat-history {
+      flex: 1;
+      background-color: #000;
+      color: #fff;
+      padding: 20px;
+      border-left: 2px solid #007BFF;
+      max-height: 600px;
+      overflow-y: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+
+    .chat-history h3 {
+      margin-top: 0;
+      color: #00ffff;
+    }
+
+    .chat-entry {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      background-color: #1a1a1a;
+    }
+
+    .chat-entry.user {
+      background-color: #333;
+    }
+
+    .chat-entry.bot {
+      background-color: #007BFF;
+    }
+
+    .instructions {
+      background-color: #e0ecff;
+      border-left: 5px solid #007BFF;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .instructions ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    form {
+      margin-bottom: 20px;
+    }
+
+    input[type="text"] {
+      padding: 8px;
+      width: 300px;
+      font-size: 16px;
+    }
+
+    input[type="submit"] {
+      padding: 8px 16px;
+      font-size: 16px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    input[type="submit"]:hover {
+      background-color: #0056b3;
+    }
+
+    .video-container {
+      margin-top: 30px;
+    }
+
+    button.refresh-btn {
+      margin-top: 10px;
+      padding: 6px 12px;
+      font-size: 14px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button.refresh-btn:hover {
+      background-color: #218838;
+    }
+  </style>
 </head>
 <body>
-    <h2>🎥 Video Streaming Chatbot</h2>
+  <h2>🎥 Video Streaming Chatbot</h2>
 
-    <div class="instructions">
+  <div class="main-layout">
+    <!-- Left side: instructions, form, video -->
+    <div class="left-panel">
+      <div class="instructions">
         <p><strong>Instructions:</strong></p>
         <ul>
-            <li><strong>Y</strong> – Start <em>Object Detection Based Video Streaming</em> and launch HTTP server on port 8554</li>
-            <li><strong>N</strong> – Start <em>Regular Video Streaming</em> and launch HTTP server on port 8554</li>
-            <li><strong>E</strong> – Stop all active streams and HTTP server</li>
+          <li><strong>Y</strong> – Start <em>Object Detection Based Video Streaming</em> and launch HTTP server on port 8554</li>
+          <li><strong>N</strong> – Start <em>Regular Video Streaming</em> and launch HTTP server on port 8554</li>
+          <li><strong>E</strong> – Stop all active streams and HTTP server</li>
         </ul>
         <p>Type one of the above options and click <strong>Send</strong>.</p>
-    </div>
-
-    <form method="post">
+		</ul>
+        <p>To Watch Live Video Streaming with Playback Option visit:<a href="http://localhost:8554/static/index.html" target="_blank"><strong>http://localhost:8554/static/index.html</strong></a></p>
+      </div>
+      <form method="post">
         <label for="user_input">Your choice:</label><br><br>
         <input type="text" name="user_input" id="user_input" placeholder="Enter Y, N, or E" autofocus required>
         <input type="submit" value="Send">
-    </form>
+      </form>
 
-    {% if response %}
-        <div class="response">
-            <p><strong>Bot:</strong> {{ response }}</p>
-        </div>
-    {% endif %}
-
-    <div class="video-container">
+      <div class="video-container">
         <video id="streamPlayer" width="640" height="360" controls autoplay muted>
-            <source id="streamSource" src="http://localhost:5000/hls/test.m3u8?nocache={{ timestamp }}" type="application/x-mpegURL">
-            Your browser does not support the video tag.
+          <source id="streamSource" src="http://localhost:5000/hls/test.m3u8?nocache={{ timestamp }}" type="application/x-mpegURL">
+          Your browser does not support the video tag.
         </video>
         <br>
         <button class="refresh-btn" onclick="refreshStream()">🔄 Refresh Stream</button>
+      </div>
     </div>
 
-    <script>
-        function refreshStream() {
-            const video = document.getElementById("streamPlayer");
-            const source = document.getElementById("streamSource");
-            const newUrl = "http://localhost:5000/hls/test.m3u8?nocache=" + Date.now();
-            source.src = newUrl;
-            video.load();
-            video.play();
-        }
-    </script>
+    <!-- Right side: chat history -->
+    <div class="Chat">
+      <h3>Chat History</h3>
+      {% if chat_log %}
+        {% for entry in chat_log %}
+          <div class="chat-entry {{ entry.role }}">
+            <strong>{{ entry.role | capitalize }}:</strong> {{ entry.message }}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>No chat history yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    function refreshStream() {
+      const video = document.getElementById("streamPlayer");
+      const source = document.getElementById("streamSource");
+      const newUrl = "http://localhost:5000/hls/test.m3u8?nocache=" + Date.now();
+      source.src = newUrl;
+      video.load();
+      video.play();
+    }
+  </script>
 </body>
 </html>
