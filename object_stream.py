@@ -7,7 +7,9 @@ import numpy as np
 from scipy.spatial import distance as dist
 from collections import OrderedDict
 from ultralytics import YOLO
-import threading  # ✅ Added for scalability - allow running multiple streams in threads
+import threading  # Added for scalability - allow running multiple streams in threads
+import logging
+import signal
 
 def load_config(config_path='stream_config.json'):
     try:
@@ -27,26 +29,14 @@ def load_config(config_path='stream_config.json'):
             "detection_conf": 0.75,                             ## Thresholding for model detection => due to varied luminiousity and other factors
             "obj_detection_interval": 10,                       ## Tradeoff between detection and latency:
             "frame_width": 640,  								## Added explicit defaults for width/height for scalability
-            "frame_height": 480
+            "frame_height": 480,
+            "debug_network_outage": false,
+            "debug_camera_failure": false,
+            "debug_gst_failure": false,
+            "debug_segment_delivery": false
         }
 
 http_proc = None
-
-def launch_http_server():
-    """Launch local HTTP server for HLS playback."""
-    global http_proc
-    if http_proc is None or http_proc.poll() is not None:
-        try:
-            http_proc = subprocess.Popen(
-                ["python", "-m", "http.server", "8554"],
-                cwd=os.getcwd(),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            print("HTTP server started on port 8554.")
-        except Exception as e:
-            print(f"[Error] Failed to start HTTP server: {e}")
-
 class CentroidTracker:
     def __init__(self, max_disappeared=10):
         self.next_object_id = 0
@@ -119,9 +109,33 @@ class CentroidTracker:
                 self.register(input_centroids[col], rects[col])
 
         return self.rects
+        
+def launch_http_server():
+    """Launch local HTTP server for HLS playback."""
+    global http_proc
+    if http_proc is None or http_proc.poll() is not None:
+        try:
+            http_proc = subprocess.Popen(
+                ["python", "-m", "http.server", "8554"],
+                cwd=os.getcwd(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print("HTTP server started on port 8554.")
+        except Exception as e:
+            print(f"[Error] Failed to start HTTP server: {e}")
+
+def shutdown_http_server():
+    """Gracefully shut down the HTTP server if running."""
+    global http_proc
+    if http_proc and http_proc.poll() is None:
+        print("[Info] Shutting down HTTP server...")
+        os.killpg(os.getpgid(http_proc.pid), signal.SIGTERM)  # ✅ Delta: kill process group
+        http_proc.wait()
+        http_proc = None
 
 def restart_gstreamer(config):
-    """✅ Reliability improvement:
+    """Reliability improvement:
     Restart GStreamer automatically if it crashes or pipe breaks."""
     try:
         gst_command = [
@@ -155,7 +169,50 @@ def start_object_detection_stream():
     config = load_config()
     launch_http_server()
 
+    # Enhancement: Start HTTP server watchdog thread to monitor network health
+    def monitor_http_server():
+        import requests
+
+        logging.basicConfig(filename="http_watchdog.log", level=logging.INFO,
+                            format="%(asctime)s [%(levelname)s] %(message)s")
+
+        # Enhanced Debug features: Print playlist URL
+        #print(f"[Debug] Monitoring playlist URL: {config['playlist_location'].replace('./hls', 'http://localhost:8554/hls')}")
+        playlist_url = config["playlist_location"].replace("./hls", "http://localhost:8554/hls")
+        retry_count = 0
+        max_retries = 3
+        retry_interval = 10
+
+        while True:
+            try:
+                if config.get("debug_network_outage", False):
+                    raise requests.ConnectionError("Simulated network outage")
+
+                r = requests.get(playlist_url, timeout=2)
+                if r.status_code != 200:
+                    logging.warning(f"Playlist returned status {r.status_code}. Retrying...")
+                    retry_count += 1
+                else:
+                    retry_count = 0
+            except Exception as e:
+                logging.warning(f"HTTP server unreachable: {e}")
+                retry_count += 1
+
+            if retry_count >= max_retries:
+                logging.error("HTTP server failed multiple times. Restarting server...")
+                print("[Watchdog] Restarting HTTP server after repeated failures...")
+                launch_http_server()
+                retry_count = 0
+
+            time.sleep(retry_interval)
+
+    import threading
+    threading.Thread(target=monitor_http_server, daemon=True).start()
+
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+    # Enhanced Debug features: Print camera config parameters
+    #print(f"[Debug] Camera config - Width: {config['frame_width']}, Height: {config['frame_height']}, FPS: {config['frames_interval']}")
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, config["frame_width"])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config["frame_height"])
     cap.set(cv2.CAP_PROP_FPS, config["frames_interval"])
@@ -171,13 +228,25 @@ def start_object_detection_stream():
     tracker = CentroidTracker()
     boxes = []
     id_to_label = {}
-
+    count_camera_debug = 0
+    camera_failure_log = open("debug_camera_failure.txt", "a")
     try:
         while True:
             istracking = 0
             start_time = time.time()
-            ret, frame = cap.read()
 
+            # Enhanced Debug features: simulate camera failure
+            if config.get("debug_camera_failure", False) and count_camera_debug % 50 == 0:
+                msg = f"[Debug] Simulating camera failure at frame {count_camera_debug}::{count}\n"
+                print(msg.strip())
+                camera_failure_log.write(msg)
+                camera_failure_log.flush()
+                ret = False
+                frame = None
+            else:
+                ret, frame = cap.read()
+            
+            count_camera_debug += 1
             if not ret:
                 print("[Warning] Frame not received. Retrying camera...")
                 time.sleep(1)
@@ -196,13 +265,17 @@ def start_object_detection_stream():
     
             if frame.shape[:2] != (config["frame_height"], config["frame_width"]):
                 frame = cv2.resize(frame, (config["frame_width"], config["frame_height"]))
-    
+
+            # Enhanced Debug features: Print object detection interval
+            #print(f"[Debug] Object detection interval: {config['obj_detection_interval']}")
             if count % config["obj_detection_interval"] < 3:
                 istracking = 0
                 results = model.predict(frame, stream=False, verbose=False)[0]
                 boxes = []
                 labels = []
 
+                # Enhanced Debug features: Print detection confidence threshold
+                #print(f"[Debug] Detection confidence threshold: {config['detection_conf']}")
                 for box, cls, conf in zip(results.boxes.xyxy.cpu().numpy(),
                               results.boxes.cls.cpu().numpy(),
                               results.boxes.conf.cpu().numpy()):
@@ -242,24 +315,58 @@ def start_object_detection_stream():
     
             try:
                 gst_process.stdin.write(frame.tobytes())
+
+                # Enhanced Debug features: simulate GStreamer failure
+                if config.get("debug_gst_failure", False) and count % 100 == 0:
+                    print("[Debug] Simulating GStreamer failure...")
+                    gst_process.kill()
+
             except Exception as e:
                 print(f"[Error] GStreamer write failed: {e}. Restarting stream...")
                 gst_process = restart_gstreamer(config)
                 continue  # Retry loop
+            # Enhancement: Log segment delivery status (basic check)
+            segment_path = config["segment_location"] % count
+
+            # Enhanced Debug features: simulate segment delivery issue
+            if config.get("debug_segment_delivery", False) and count % 60 == 0:
+                fake_segment = config["segment_location"] % (count + 9999)
+                print(f"[Debug] Simulating missing segment: {fake_segment}")
+                if not os.path.exists(fake_segment):
+                    print(f"[Warning] Simulated segment {fake_segment} not found.")
+            elif not os.path.exists(segment_path):
+                print(f"[Warning] Segment {segment_path} not found. Possible delivery issue.")
 
             count += 1
             elapsed = time.time() - start_time
             time.sleep(max(0, frame_interval - elapsed))
 
-    except KeyboardInterrupt:
+    except KeyboardInterrupt: ## in case the interrupt is signalled.
         print("\n[Info] Stopping stream gracefully...")
-    finally:
+        shutdown_http_server()
         cap.release()
         if gst_process and gst_process.stdin:
             gst_process.stdin.close()
         if gst_process:
             gst_process.wait()
         cv2.destroyAllWindows()
+        try:
+            for filename in os.listdir(hls_dir):
+                file_path = os.path.join(hls_dir, filename)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            print("Cleaned up HLS segment files.")
+        except Exception as e:
+            print(f"Error cleaning up HLS files: {e}")
+            
+    finally: ## in case the code breaks at the run time
+        cap.release()
+        if gst_process and gst_process.stdin:
+            gst_process.stdin.close()
+        if gst_process:
+            gst_process.wait()
+        cv2.destroyAllWindows()
+        shutdown_http_server()
         try:
             for filename in os.listdir(hls_dir):
                 file_path = os.path.join(hls_dir, filename)
